@@ -1,5 +1,5 @@
 (function(f){if(typeof exports==="object"&&typeof module!=="undefined"){module.exports=f()}else if(typeof define==="function"&&define.amd){define([],f)}else{var g;if(typeof window!=="undefined"){g=window}else if(typeof global!=="undefined"){g=global}else if(typeof self!=="undefined"){g=self}else{g=this}g.WSAvcPlayer = f()}})(function(){var define,module,exports;return (function(){function r(e,n,t){function o(i,f){if(!n[i]){if(!e[i]){var c="function"==typeof require&&require;if(!f&&c)return c(i,!0);if(u)return u(i,!0);var a=new Error("Cannot find module '"+i+"'");throw a.code="MODULE_NOT_FOUND",a}var p=n[i]={exports:{}};e[i][0].call(p.exports,function(r){var n=e[i][1][r];return o(n||r)},p,p.exports,r,e,n,t)}return n[i].exports}for(var u="function"==typeof require&&require,i=0;i<t.length;i++)o(t[i]);return o}return r})()({1:[function(require,module,exports){
-(function (__dirname){(function (){
+(function (__dirname){
 // universal module definition
 (function (root, factory) {
     if (typeof define === 'function' && define.amd) {
@@ -967,7 +967,7 @@ function A(a){a&&(p.print(a),p.fa(a));H=i;d("abort() at "+Fa()+"\nIf this abort(
 }));
 
 
-}).call(this)}).call(this,"/Users/xjm/Desktop/h264-live-player-python/vendor/broadway")
+}).call(this,"/WebstormProjects/h264-live-player/vendor/broadway")
 },{}],2:[function(require,module,exports){
 "use strict";
 var assert = require('../utils/assert');
@@ -5214,5 +5214,34 @@ var WSAvcPlayer = new Class({
 module.exports = WSAvcPlayer;
 module.exports.debug = debug;
 
-},{"../broadway/Decoder":1,"../canvas/YUVCanvas":7,"../canvas/YUVWebGLCanvas":8,"../utils/Size":43,"debug":9,"uclass":42,"uclass/events":40}]},{},[47])(47)
+},{"../broadway/Decoder":1,"../canvas/YUVCanvas":7,"../canvas/YUVWebGLCanvas":8,"../utils/Size":43,"debug":9,"uclass":42,"uclass/events":40}],48:[function(require,module,exports){
+const WSAvcPlayer = require('./index');
+
+const player = {};
+
+self.onmessage = function(e) {
+    const msg = e.data;
+    switch(msg.cmd){
+        case 'init':
+            player.offscreenCanvas = msg.canvas;
+            player.player = new WSAvcPlayer(player.offscreenCanvas, 'webgl');
+            break;
+        case 'play':
+            player.player.playStream();
+            break;
+        case 'stop':
+            player.player.stopStream();
+            break;
+        case 'connect':
+            player.player.connect(msg.url);
+            break;
+        case 'disconnect':
+            player.disconnect();
+            break;
+        default:
+            throw 'unknown cmd ' + msg.cmd;
+    }
+};
+
+},{"./index":47}]},{},[48])(48)
 });

@@ -1,3 +1,8 @@
+# For this project
+
+The h264-live-player is a great project, especially when you have limited computational resources on your streaming server but still want a real-time live streaming effect. Since the server for this project is written in Node.js, it can be a bit challenging for Python beginners. I write a simple Flask and Flask-Sock application demo to serve as an introductory exploration for the h264-live-player.
+
+
 # Motivation
 
 This is a very simple h264 video player (that can run on live stream) for your browser.

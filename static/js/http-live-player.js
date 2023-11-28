@@ -5134,7 +5134,7 @@ var WSAvcPlayer = new Class({
 
       this.pktnum++;
       var frame = new Uint8Array(evt.data);
-      //log("[Pkt " + this.pktnum + " (" + evt.data.byteLength + " bytes)]");
+      // log("[Pkt " + this.pktnum + " (" + evt.data.byteLength + " bytes)]");
       //this.decode(frame);
       framesList.push(frame);
     };

@@ -5,7 +5,8 @@
   <body>
 
     <button type="button" onclick="wsavc.playStream()">Start Video</button>
-    <button type="button" onclick="wsavc.stopStream()">Stop Video</button>
+    <!-- not really need pause function -->
+    <!-- <button type="button" onclick="wsavc.stopStream()">Stop Video</button> -->
     <button type="button" onclick="wsavc.disconnect()">Disconnect</button>
     <br/>
 
@@ -16,8 +17,8 @@ var canvas = document.createElement("canvas");
 document.body.appendChild(canvas);
 
 // Create h264 player
-var uri = "ws://" + document.location.host;
-const ww = new Worker('http-live-player-worker.js');
+var uri = "ws://" + document.location.host + "/static";
+const ww = new Worker('static/js/http-live-player-worker.js');
 const ofc = canvas.transferControlToOffscreen()
 ww.postMessage({
   cmd:'init',
