@@ -14,11 +14,11 @@ sock = Sock(app)
 static_socks = []
 static_stream_thread = None
 
+# shared variables for ffmpeg
+ffmpeg_socks = []
+ffmpeg_stream_thread = None
+
 NALseparator = b'\x00\x00\x00\x01'
-options = {
-    "width": 960,
-    "height": 540
-}
 
 
 @app.route('/')
@@ -27,13 +27,23 @@ def home_template():
 
 
 @app.route('/static')
-def index_template():
+def static_template():
     return render_template('static.html')
 
 
 @app.route('/staticww')
-def worker_template():
+def static_worker_template():
     return render_template('static_ww.html')
+
+
+@app.route('/ffmpeg')
+def ffmpeg_template():
+    return render_template('ffmpeg.html')
+
+
+@app.route('/ffmpegww')
+def ffmpeg_worker_template():
+    return render_template('ffmpeg_ww.html')
 
 
 # The implementation logic here is as follows: 
@@ -51,6 +61,12 @@ def static_sock(sock):
     # file_path = "static/samples/admiral.264"
     file_path = "static/samples/out.h264"
     global static_socks
+
+    # the video resolution for out.h264 is 960x540
+    options = {
+        "width": 960,
+        "height": 540
+    }
     
     def get_feed():
         with open(file_path, "rb") as h264_file:
@@ -75,7 +91,7 @@ def static_sock(sock):
                     yield bytes(segment)
                     buffer = buffer[next_separator_position:]
     
-    def broadcast_frame(get_feed):
+    def broadcast_frame():
         for segment in get_feed():
             broadcast(static_socks, segment)
 
@@ -83,20 +99,30 @@ def static_sock(sock):
         print("Start Feeding...")
         global static_stream_thread
         if static_stream_thread is None or not static_stream_thread.is_alive():
-            static_stream_thread = threading.Thread(target=broadcast_frame, args=[get_feed])
+            static_stream_thread = threading.Thread(target=broadcast_frame)
             static_stream_thread.start()
         
-    new_client(sock, static_socks, start_feed)
+    new_client(sock, static_socks, options, start_feed)
 
-# TODO: implement ffmpeg
+
+# This setup uses FFmpeg to stream from your camera. You can modify the FFmpeg command 
+# below to suit your device. It's also important to note that the 'pause' here is not 
+# a true pause, as detailed in the NOTE section of the static_sock function.
 @sock.route('/ffmpeg')
 def ffmpeg_sock(sock):
 
+    # the video resolution my camera is 960x540
+    options = {
+        "width": 640,
+        "height": 480
+    }
+
+    # Use your own ffmpeg settings (mine is for mac)
     ffmpeg_command = [
         'ffmpeg',
         '-f', 'avfoundation',
         '-framerate', '30',
-        '-video_size', '640x480',
+        '-video_size', f'{options["width"]}x{options["height"]}',
         '-i', '0',
         '-g', '10',
         '-vcodec', 'libx264',
@@ -107,47 +133,63 @@ def ffmpeg_sock(sock):
         'pipe:1'
     ]
 
-    # leftover = b''  # 用于存储上次读取的剩余数据
-            # process = subprocess.Popen(ffmpeg_command, stdout=subprocess.PIPE)
-            # while True:
-            #     # 从 FFmpeg 输出中读取数据
-            #     buffer = process.stdout.read(2048)
-            #     if not buffer and not leftover:
-            #         break
-            #
-            #     buffer = leftover + buffer  # 将剩余数据与新数据拼接
-            #
-            #     start = 0
-            #     while True:
-            #         start_code_index = find_start_code(buffer, start)
-            #         if start_code_index < 0:
-            #             leftover = buffer[start:] # 保存剩余数据以用于下次拼接
-            #             break
-            #         next_start_code_index = find_start_code(buffer, start_code_index + 4)
-            #         if next_start_code_index < 0:
-            #             nal_unit = buffer[start_code_index:]
-            #             leftover = nal_unit  # 保存不完整的 NAL 单元以用于下次拼接
-            #             break
-            #
-            #         nal_unit = buffer[start_code_index:next_start_code_index]
-            #         nal_type = get_nal_type(nal_unit)
-            #         process_nal_unit(nal_type, nal_unit)
-            #         sock.send(nal_unit)
-            #
-            #         start = next_start_code_index
-    pass
+    global ffmpeg_socks
+
+    def start_process():
+        process = subprocess.Popen(ffmpeg_command, stdout=subprocess.PIPE)
+        return process
+    
+    def get_feed(ffmpeg_stdout):
+        buffer = bytearray()
+        while True:
+            chunk = ffmpeg_stdout.read(4096)
+            if not chunk:
+                if buffer:
+                    yield bytes(buffer)
+                break
+
+            buffer += chunk
+            while NALseparator in buffer:
+                position = buffer.index(NALseparator)
+                next_separator_position = buffer.find(NALseparator, position + len(NALseparator))
+                
+                if next_separator_position == -1:
+                    break
+
+                segment = buffer[position:next_separator_position]
+                yield bytes(segment)
+                buffer = buffer[next_separator_position:]
+
+    def broadcast_frame():
+        process = start_process()
+        for segment in get_feed(process.stdout):
+            broadcast(ffmpeg_socks, segment)
+            if len(ffmpeg_socks) == 0:
+                print("No clients are watching. Stopping FFmpeg stream.")
+                process.terminate()
+                break
+    
+    def start_feed():
+        print("Start Feeding...")
+        global ffmpeg_stream_thread
+        if ffmpeg_stream_thread is None or not ffmpeg_stream_thread.is_alive():
+            ffmpeg_stream_thread = threading.Thread(target=broadcast_frame)
+            ffmpeg_stream_thread.start()
+    
+    new_client(sock, ffmpeg_socks, options, start_feed)
+
 
 def broadcast(socks, data):
     for sock in socks:
         try:
             if not sock.pause:
                 sock.send(data)
-        except ConnectionClosed as e:
+        except Exception as e:
             print(e)
-            # ignore the disconnected clients
+            # ignore the disconnected clients or other issues
             pass
 
-def new_client(sock, socks, start_feed):
+def new_client(sock, socks, options, start_feed):
     try:
         # add an attribute to pause the socket
         # default is False
