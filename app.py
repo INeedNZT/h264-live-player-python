@@ -210,6 +210,7 @@ def rpicam_sock(sock):
         'rpicam-vid',
         '-t', '0',
         '-o', '-',
+        '--nopreview',
         '--width', f'{options["width"]}',
         '--height', f'{options["height"]}',
         '--framerate', f'{options["framerate"]}',
@@ -306,4 +307,5 @@ def new_client(sock, socks, options, start_feed):
 
 
 if __name__ == "__main__":
+    # You can add host='0.0.0.0' to make it accessible from other devices
     app.run()
