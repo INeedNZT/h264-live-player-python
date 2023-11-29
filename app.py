@@ -4,13 +4,15 @@ from simple_websocket import ConnectionClosed
 from time import sleep
 import json
 
+import threading
 import subprocess
 
 app = Flask(__name__)
 sock = Sock(app)
+
 # shared variables for static video
 static_socks = []
-static_buffer = bytearray()
+static_stream_thread = None
 
 NALseparator = b'\x00\x00\x00\x01'
 options = {
@@ -44,11 +46,11 @@ def worker_template():
 def static_sock(sock):
     # file_path = "static/samples/admiral.264"
     file_path = "static/samples/out.h264"
-
-
-    def start_feed(buffer):
-        print("Start feed")
+    global static_socks
+    
+    def get_feed():
         with open(file_path, "rb") as h264_file:
+            buffer = bytearray()
             while True:
                 sleep(0.074)
                 chunk = h264_file.read(4096)
@@ -68,8 +70,19 @@ def static_sock(sock):
                     segment = buffer[position:next_separator_position]
                     yield bytes(segment)
                     buffer = buffer[next_separator_position:]
+    
+    def broadcast_frame(get_feed):
+        for segment in get_feed():
+            broadcast(static_socks, segment)
 
-    new_client(sock, static_socks, static_buffer, start_feed)
+    def start_feed():
+        print("Start Feeding...")
+        global static_stream_thread
+        if static_stream_thread is None or not static_stream_thread.is_alive():
+            static_stream_thread = threading.Thread(target=broadcast_frame, args=[get_feed])
+            static_stream_thread.start()
+        
+    new_client(sock, static_socks, start_feed)
 
 # TODO: implement ffmpeg
 @sock.route('/ffmpeg')
@@ -123,13 +136,18 @@ def ffmpeg_sock(sock):
 def broadcast(socks, data):
     for sock in socks:
         try:
-            sock.send(data)
+            if not sock.pause:
+                sock.send(data)
         except ConnectionClosed as e:
-            # avoid concurrency issues
+            print(e)
+            # ignore the disconnected clients
             pass
 
-def new_client(sock, socks, buffer, start_feed):
+def new_client(sock, socks, start_feed):
     try:
+        # add an attribute to pause the socket
+        # default is False
+        sock.pause = False
         socks.append(sock)
         print("New client connected!")
 
@@ -146,15 +164,12 @@ def new_client(sock, socks, buffer, start_feed):
             action = message.split(' ')[0]
             
             if action == "REQUESTSTREAM":
-                if len(buffer) == 0:
-                    for segment in start_feed(buffer):
-                        broadcast(socks, segment)
-                    buffer.clear()  # clear buffer after stream finished
-                
-                
+                sock.pause = False
+                start_feed()
             elif action == "STOPSTREAM":
-                # not implemented yet
-                pass
+                # pause just for this socket
+                sock.pause = True
+
     except ConnectionClosed as e:
         socks.remove(sock)
         print("Client disconnected!")
