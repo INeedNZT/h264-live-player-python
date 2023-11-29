@@ -16,7 +16,7 @@ var canvas = document.createElement("canvas");
 document.body.appendChild(canvas);
 
 // Create h264 player
-var uri = "ws://" + document.location.host + "/ffmpeg";
+var uri = "ws://" + document.location.host + "/rpicam";
 const ww = new Worker('static/js/http-live-player-worker.js');
 const ofc = canvas.transferControlToOffscreen()
 ww.postMessage({

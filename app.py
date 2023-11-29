@@ -2,10 +2,10 @@ from flask import Flask, render_template
 from flask_sock import Sock
 from simple_websocket import ConnectionClosed
 from time import sleep
-import json
-
 import threading
 import subprocess
+import json
+
 
 app = Flask(__name__)
 sock = Sock(app)
@@ -17,6 +17,10 @@ static_stream_thread = None
 # shared variables for ffmpeg
 ffmpeg_socks = []
 ffmpeg_stream_thread = None
+
+# shared variables for rpicam
+rpicam_socks = []
+rpicam_stream_thread = None
 
 NALseparator = b'\x00\x00\x00\x01'
 
@@ -46,6 +50,16 @@ def ffmpeg_worker_template():
     return render_template('ffmpeg_ww.html')
 
 
+@app.route('/rpicam')
+def rpicam_template():
+    return render_template('rpicam.html')
+
+
+@app.route('/rpicamww')
+def rpicam_worker_template():
+    return render_template('rpicam_ww.html')
+
+
 # The implementation logic here is as follows: 
 # Once a client starts the video, the server will read the video file and send it to the client.
 # Requests from other clients will be ignored, 
@@ -58,21 +72,22 @@ def ffmpeg_worker_template():
 # The image might only return to normal when the next SPS frame is received, but it is rare in this video.
 @sock.route('/static')
 def static_sock(sock):
-    # file_path = "static/samples/admiral.264"
-    file_path = "static/samples/out.h264"
+
     global static_socks
 
     # the video resolution for out.h264 is 960x540
     options = {
         "width": 960,
-        "height": 540
+        "height": 540,
+        "file_path": "static/samples/out.h264"
+        # "file_path": "static/samples/admiral.264"
     }
     
     def get_feed():
-        with open(file_path, "rb") as h264_file:
+        with open(options['file_path'], "rb") as h264_file:
             buffer = bytearray()
             while True:
-                sleep(0.074)
+                sleep(0.04)
                 chunk = h264_file.read(4096)
                 if not chunk:
                     if buffer:
@@ -111,7 +126,7 @@ def static_sock(sock):
 @sock.route('/ffmpeg')
 def ffmpeg_sock(sock):
 
-    # the video resolution my camera is 960x540
+    # the video resolution my camera is 640x480
     options = {
         "width": 640,
         "height": 480
@@ -177,6 +192,74 @@ def ffmpeg_sock(sock):
             ffmpeg_stream_thread.start()
     
     new_client(sock, ffmpeg_socks, options, start_feed)
+
+
+@sock.route('/rpicam')
+def rpicam_sock(sock):
+
+    # the rapicam resolution of mine is 640x480
+    options = {
+        "width": 640,
+        "height": 480,
+        "framerate": 25
+    }
+
+    # Use your own rpicam settings, this is an updated version
+    # https://www.raspberrypi.com/documentation/computers/camera_software.html#introduction
+    rpicam_command = [
+        'rpicam-vid',
+        '-t', '0',
+        '-o', '-',
+        '--width', f'{options["width"]}',
+        '--height', f'{options["height"]}',
+        '--framerate', f'{options["framerate"]}',
+        '--profile', 'baseline'
+    ]
+
+    global rpicam_socks
+
+    def start_process():
+        process = subprocess.Popen(rpicam_command, stdout=subprocess.PIPE)
+        return process
+    
+    def get_feed(rpicam_stdout):
+        buffer = bytearray()
+        while True:
+            chunk = rpicam_stdout.read(4096)
+            if not chunk:
+                if buffer:
+                    yield bytes(buffer)
+                break
+
+            buffer += chunk
+            while NALseparator in buffer:
+                position = buffer.index(NALseparator)
+                next_separator_position = buffer.find(NALseparator, position + len(NALseparator))
+                
+                if next_separator_position == -1:
+                    break
+
+                segment = buffer[position:next_separator_position]
+                yield bytes(segment)
+                buffer = buffer[next_separator_position:]
+
+    def broadcast_frame():
+        process = start_process()
+        for segment in get_feed(process.stdout):
+            broadcast(rpicam_socks, segment)
+            if len(rpicam_socks) == 0:
+                print("No clients are watching. Stopping Raspberry Pi Camera.")
+                process.terminate()
+                break
+    
+    def start_feed():
+        print("Start Feeding...")
+        global rpicam_stream_thread
+        if rpicam_stream_thread is None or not rpicam_stream_thread.is_alive():
+            rpicam_stream_thread = threading.Thread(target=broadcast_frame)
+            rpicam_stream_thread.start()
+    
+    new_client(sock, rpicam_socks, options, start_feed)
 
 
 def broadcast(socks, data):
