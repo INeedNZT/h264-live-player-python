@@ -8,8 +8,10 @@ import subprocess
 
 app = Flask(__name__)
 sock = Sock(app)
+# shared variables for static video
 static_socks = []
 static_buffer = bytearray()
+
 NALseparator = b'\x00\x00\x00\x01'
 options = {
     "width": 960,
@@ -32,6 +34,12 @@ def worker_template():
     return render_template('static_ww.html')
 
 
+# The implementation logic here is as follows: 
+# Once a client starts the video, the server will read the video file and send it to the client.
+# Requests from other clients will be ignored, 
+# but they will still receive the broadcast. Note this is just for testing purposes.
+# FAQ: If you play out.h264, for new clients, it is normal to wait for a while before the video is played
+# since the SPS frame is sparse, and admiral.264 cannot be played because it is not an h264 baseline profile. 
 @sock.route('/static')
 def static_sock(sock):
     # file_path = "static/samples/admiral.264"
@@ -60,7 +68,6 @@ def static_sock(sock):
                     segment = buffer[position:next_separator_position]
                     yield bytes(segment)
                     buffer = buffer[next_separator_position:]
-        return
 
     new_client(sock, static_socks, static_buffer, start_feed)
 
@@ -115,7 +122,11 @@ def ffmpeg_sock(sock):
 
 def broadcast(socks, data):
     for sock in socks:
-        sock.send(data)
+        try:
+            sock.send(data)
+        except ConnectionClosed as e:
+            # avoid concurrency issues
+            pass
 
 def new_client(sock, socks, buffer, start_feed):
     try:
@@ -151,4 +162,4 @@ def new_client(sock, socks, buffer, start_feed):
 
 
 if __name__ == "__main__":
-    app.run(debug=True)
+    app.run()
