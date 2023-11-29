@@ -40,8 +40,12 @@ def worker_template():
 # Once a client starts the video, the server will read the video file and send it to the client.
 # Requests from other clients will be ignored, 
 # but they will still receive the broadcast. Note this is just for testing purposes.
-# FAQ: If you play out.h264, for new clients, it is normal to wait for a while before the video is played
+# NOTE:
+# 1. If you play out.h264, for new clients, it is normal to wait for a while before the video is played
 # since the SPS frame is sparse, and admiral.264 cannot be played because it is not an h264 baseline profile. 
+# 2. If you experience pixelation when pausing and then resuming the video, it is normal because 
+# this implementation doesn't truly pause the broadcast (the server continues broadcasting). 
+# The image might only return to normal when the next SPS frame is received, but it is rare in this video.
 @sock.route('/static')
 def static_sock(sock):
     # file_path = "static/samples/admiral.264"
