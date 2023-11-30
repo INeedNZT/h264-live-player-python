@@ -66,10 +66,10 @@ def rpicam_worker_template():
 # but they will still receive the broadcast. Note this is just for testing purposes.
 # NOTE:
 # 1. If you play out.h264, for new clients, it is normal to wait for a while before the video is played
-# since the SPS frame is sparse, and admiral.264 cannot be played because it is not an h264 baseline profile. 
+# since the I frame is sparse, and admiral.264 cannot be played because it is not an h264 baseline profile. 
 # 2. If you experience pixelation when pausing and then resuming the video, it is normal because 
 # this implementation doesn't truly pause the broadcast (the server continues broadcasting). 
-# The image might only return to normal when the next SPS frame is received, but it is rare in this video.
+# The image might only return to normal when the next I frame is received, but it is rare in this video.
 @sock.route('/static')
 def static_sock(sock):
 
@@ -210,7 +210,7 @@ def rpicam_sock(sock):
         'rpicam-vid',
         '-t', '0',
         '-o', '-',
-        '--nopreview',
+        '--nopreview', '--inline',
         '--width', f'{options["width"]}',
         '--height', f'{options["height"]}',
         '--framerate', f'{options["framerate"]}',
